@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Backtesting System</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.css" rel="stylesheet">
+    <style>
+        .chart-container {
+            position: relative;
+            height: 400px;
+            margin-bottom: 2rem;
+        }
+        .metrics-card {
+            margin-bottom: 1rem;
+        }
+        .loading {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(255, 255, 255, 0.8);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+    </style>
+</head>
+<body>
+    <div class="container-fluid py-4">
+        <h1 class="text-center mb-4">Backtesting System</h1>
+        
+        <!-- Input Form -->
+        <div class="card mb-4">
+            <div class="card-body">
+                <form id="backtestForm">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="symbol" class="form-label">Symbol</label>
+                                <input type="text" class="form-control" id="symbol" value="AAPL">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="startDate" class="form-label">Start Date</label>
+                                <input type="date" class="form-control" id="startDate" value="2020-01-01">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="endDate" class="form-label">End Date</label>
+                                <input type="date" class="form-control" id="endDate" value="2023-01-01">
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <div class="mb-3">
+                                <label for="initialCapital" class="form-label">Initial Capital ($)</label>
+                                <input type="number" class="form-control" id="initialCapital" value="10000">
+                            </div>
+                        </div>
+                    </div>
+                    <button type="submit" class="btn btn-primary">Run Backtest</button>
+                </form>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="results" style="display: none;">
+            <!-- Performance Metrics -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Performance Metrics</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="row" id="metricsContainer"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Portfolio Value</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="portfolioChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Price and Signals</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="priceChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="row mb-4">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Technical Indicators</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="chart-container">
+                                <canvas id="indicatorsChart"></canvas>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Trade Analysis -->
+            <div class="row">
+                <div class="col-md-12">
+                    <div class="card">
+                        <div class="card-header">
+                            <h5 class="card-title mb-0">Trade Analysis</h5>
+                        </div>
+                        <div class="card-body">
+                            <div class="table-responsive">
+                                <table class="table" id="tradesTable">
+                                    <thead>
+                                        <tr>
+                                            <th>Entry Date</th>
+                                            <th>Exit Date</th>
+                                            <th>Entry Price</th>
+                                            <th>Exit Price</th>
+                                            <th>Position</th>
+                                            <th>PnL</th>
+                                            <th>Return</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Loading Overlay -->
+    <div class="loading" id="loadingOverlay">
+        <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.1.3/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@3.7.0/dist/chart.min.js"></script>
+    <script>
+        // Form submission handler
+        document.getElementById('backtestForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            
+            // Show loading overlay
+            document.getElementById('loadingOverlay').style.display = 'flex';
+            
+            try {
+                const response = await fetch('/run_backtest', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        symbol: document.getElementById('symbol').value,
+                        start_date: document.getElementById('startDate').value,
+                        end_date: document.getElementById('endDate').value,
+                        initial_capital: parseFloat(document.getElementById('initialCapital').value)
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (data.success) {
+                    updateUI(data);
+                    document.getElementById('results').style.display = 'block';
+                } else {
+                    alert('Error: ' + data.error);
+                }
+            } catch (error) {
+                alert('Error: ' + error.message);
+            } finally {
+                // Hide loading overlay
+                document.getElementById('loadingOverlay').style.display = 'none';
+            }
+        });
+
+        function updateUI(data) {
+            // Update metrics
+            const metricsContainer = document.getElementById('metricsContainer');
+            metricsContainer.innerHTML = '';
+            
+            Object.entries(data.metrics).forEach(([key, value]) => {
+                const formattedValue = typeof value === 'number' 
+                    ? (value < 1 ? (value * 100).toFixed(2) + '%' : value.toFixed(2))
+                    : value;
+                
+                metricsContainer.innerHTML += `
+                    <div class="col-md-3">
+                        <div class="card metrics-card">
+                            <div class="card-body">
+                                <h6 class="card-title">${key.replace(/_/g, ' ').toUpperCase()}</h6>
+                                <p class="card-text">${formattedValue}</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+
+            // Create portfolio chart
+            new Chart(document.getElementById('portfolioChart'), {
+                type: 'line',
+                data: {
+                    labels: data.portfolio_data.dates,
+                    datasets: [{
+                        label: 'Portfolio Value',
+                        data: data.portfolio_data.total,
+                        borderColor: 'rgb(75, 192, 192)',
+                        tension: 0.1
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            // Create price and signals chart
+            new Chart(document.getElementById('priceChart'), {
+                type: 'line',
+                data: {
+                    labels: data.price_data.dates,
+                    datasets: [
+                        {
+                            label: 'Price',
+                            data: data.price_data.close,
+                            borderColor: 'rgb(54, 162, 235)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'Signals',
+                            data: data.signals_data.signals,
+                            borderColor: 'rgb(255, 99, 132)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            // Create indicators chart
+            new Chart(document.getElementById('indicatorsChart'), {
+                type: 'line',
+                data: {
+                    labels: data.price_data.dates,
+                    datasets: [
+                        {
+                            label: 'SMA Short',
+                            data: data.indicators_data.sma_short,
+                            borderColor: 'rgb(255, 159, 64)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'SMA Long',
+                            data: data.indicators_data.sma_long,
+                            borderColor: 'rgb(153, 102, 255)',
+                            tension: 0.1
+                        },
+                        {
+                            label: 'RSI',
+                            data: data.indicators_data.rsi,
+                            borderColor: 'rgb(201, 203, 207)',
+                            tension: 0.1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false
+                }
+            });
+
+            // Update trades table
+            const tradesTable = document.getElementById('tradesTable').getElementsByTagName('tbody')[0];
+            tradesTable.innerHTML = '';
+            
+            data.trade_analysis.trades.forEach(trade => {
+                const row = tradesTable.insertRow();
+                row.innerHTML = `
+                    <td>${trade.entry_date}</td>
+                    <td>${trade.exit_date}</td>
+                    <td>${trade.entry_price.toFixed(2)}</td>
+                    <td>${trade.exit_price.toFixed(2)}</td>
+                    <td>${trade.position.toFixed(2)}</td>
+                    <td>${trade.pnl.toFixed(2)}</td>
+                    <td>${(trade.return * 100).toFixed(2)}%</td>
+                `;
+            });
+        }
+    </script>
+</body>
+</html> 
